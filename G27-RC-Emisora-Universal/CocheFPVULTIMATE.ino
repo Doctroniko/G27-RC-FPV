@@ -20,7 +20,7 @@ float throttleMaxVoltage     = 5.0;
 int throttleTrim = 0;
 bool throttleReverse = false;
 
-const int pedalDeadBand = 10;
+const int pedalDeadBand = 5;
 
 
 // ============================================================
@@ -34,6 +34,8 @@ const int pwmEncoderPin = 5;
 
 const int potAdelante = A0;
 const int potReversa = A1;
+const int potTrimSteer = A2;
+const int potTrimThrot = A3;
 const int pwmPotsPin = 9;
 
 
@@ -43,7 +45,7 @@ const int pwmPotsPin = 9;
 
 volatile int encoderPos = 0;
 int lastEncoderPos = 0;
-
+int lastHardwareSteeringTrim = 512;
 int buttonState = 0;
 int lastButtonState = 0;
 
@@ -68,17 +70,34 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(encoderPinB), updateEncoder, CHANGE);
 
   pinMode(pwmPotsPin, OUTPUT);
-  
+
 // Establecemos la dirección en NEUTRO al arrancar
-int pwmNeutral = (int)(steeringNeutralVoltage / 5.0 * 255.0);
-pwmNeutral = pwmNeutral + steeringTrim;
-pwmNeutral = constrain(pwmNeutral, 0, 255);
-analogWrite(pwmEncoderPin, pwmNeutral);
+int pwmNeutral =
+  (int)(steeringNeutralVoltage / 5.0 * 255.0);
 
-  Serial.println("Sistema combinado listo.");
+int hardwareSteeringTrim = map(
+  analogRead(potTrimSteer),
+  0,
+  1023,
+  -20,
+  20
+);
+
+pwmNeutral =
+  pwmNeutral +
+  steeringTrim +
+  hardwareSteeringTrim;
+
+pwmNeutral =
+  constrain(pwmNeutral, 0, 255);
+
+analogWrite(
+  pwmEncoderPin,
+  pwmNeutral
+);
+
+Serial.println("Sistema combinado listo.");
 }
-
-
 // ============================================================
 //                         LOOP
 // ============================================================
@@ -121,10 +140,24 @@ void manejarEncoder() {
   lastButtonState = reading;
 
 
-  if (encoderPos != lastEncoderPos) {
+  // ========================================================
+  // LEEMOS EL TRIM FÍSICO DE DIRECCIÓN
+  // ========================================================
 
-    // Convertimos la posición del encoder en PWM
-    // utilizando las tensiones configuradas arriba.
+  int currentHardwareSteeringTrim = analogRead(potTrimSteer);
+
+
+  // ========================================================
+  // ACTUALIZAMOS EL PWM SI:
+  // - HA CAMBIADO EL ENCODER
+  // - O HA CAMBIADO EL TRIMPOT FÍSICO
+  // ========================================================
+
+  if (encoderPos != lastEncoderPos ||
+      currentHardwareSteeringTrim != lastHardwareSteeringTrim) {
+
+
+    // Convertimos las tensiones configuradas a PWM
 
     int pwmMin = (int)(steeringMinVoltage / 5.0 * 255.0);
 
@@ -140,37 +173,19 @@ void manejarEncoder() {
     // de giro seleccionado.
     // --------------------------------------------------------
 
-    int encoderLimit;
+    steeringAngle = constrain(steeringAngle, 270, 900);
 
-// Primero determinamos el límite correspondiente
-// al ángulo seleccionado.
-
-if (steeringAngle == 900) {
-
-  encoderLimit = 4904;
-
-} else if (steeringAngle == 720) {
-
-  encoderLimit = 3841;
-
-} else if (steeringAngle == 540) {
-
-  encoderLimit = 2871;
-
-} else {
-
-  encoderLimit = 4904;
-}
+    int encoderLimit = (int)(5.647 * steeringAngle - 180.0);
 
 
-// Si se utiliza un encoder de 30 ranuras,
-// reducimos aproximadamente a la mitad
-// el número de cuentas.
+    // Si se utiliza un encoder de 30 ranuras,
+    // reducimos aproximadamente a la mitad
+    // el número de cuentas.
 
-if (encoderSlots == 30) {
+    if (encoderSlots == 30) {
 
-  encoderLimit = encoderLimit / 2;
-}
+      encoderLimit = encoderLimit / 2;
+    }
 
 
     int pwmValue;
@@ -178,11 +193,18 @@ if (encoderSlots == 30) {
 
     int posicion = encoderPos;
 
-if (steeringReverse) {
-  posicion = -posicion;
-}
-    
-posicion = constrain(posicion, -encoderLimit, encoderLimit);
+
+    if (steeringReverse) {
+      posicion = -posicion;
+    }
+
+
+    posicion = constrain(
+      posicion,
+      -encoderLimit,
+      encoderLimit
+    );
+
 
     if (posicion <= 0) {
 
@@ -206,24 +228,71 @@ posicion = constrain(posicion, -encoderLimit, encoderLimit);
     }
 
 
-    // Aplicamos el TRIM
-    pwmValue = pwmValue + steeringTrim;
+    // ========================================================
+    // TRIM FÍSICO DE DIRECCIÓN
+    // ========================================================
 
-    pwmValue = constrain(pwmValue, 0, 255);
+    int hardwareSteeringTrim = map(
+      currentHardwareSteeringTrim,
+      0,
+      1023,
+      -20,
+      20
+    );
 
-    analogWrite(pwmEncoderPin, pwmValue);
 
+    // ========================================================
+    // SUMAMOS:
+    //
+    // PWM de dirección
+    // + trim software
+    // + trim físico
+    // ========================================================
+
+    pwmValue =
+      pwmValue +
+      steeringTrim +
+      hardwareSteeringTrim;
+
+
+    pwmValue = constrain(
+      pwmValue,
+      0,
+      255
+    );
+
+
+    analogWrite(
+      pwmEncoderPin,
+      pwmValue
+    );
+
+
+    // ========================================================
+    // MONITOR SERIE
+    // ========================================================
 
     Serial.print("Encoder Pos: ");
     Serial.print(encoderPos);
 
+    Serial.print(" | Trim SW: ");
+    Serial.print(steeringTrim);
+
+    Serial.print(" | Trim HW: ");
+    Serial.print(hardwareSteeringTrim);
+
     Serial.print(" | PWM Encoder: ");
     Serial.println(pwmValue);
 
+
+    // Guardamos los últimos valores
+
     lastEncoderPos = encoderPos;
+
+    lastHardwareSteeringTrim =
+      currentHardwareSteeringTrim;
   }
 }
-
 
 // ============================================================
 //                MANEJO DE THROTTLE / BRAKE
@@ -233,11 +302,12 @@ void manejarPots() {
 
   int valAdelante = analogRead(potAdelante);
   int valReversa  = analogRead(potReversa);
+
   if (throttleReverse) {
-  int temp = valAdelante;
-  valAdelante = valReversa;
-  valReversa = temp;
-}
+    int temp = valAdelante;
+    valAdelante = valReversa;
+    valReversa = temp;
+  }
 
   float voltajeSalida = throttleNeutralVoltage;
 
@@ -252,11 +322,6 @@ void manejarPots() {
 
   // ========================================================
   // DEAD BAND
-  // ========================================================
-  //
-  // Si ninguno de los pedales ha salido de la zona muerta,
-  // mantenemos la salida en NEUTRO.
-  //
   // ========================================================
 
   if (throttleMovement <= pedalDeadBand &&
@@ -303,7 +368,7 @@ void manejarPots() {
 
 
   // ========================================================
-  // CONVERTIMOS LA TENSIÓN CALCULADA A PWM
+  // CONVERTIMOS LA TENSIÓN A PWM
   // ========================================================
 
   int pwmOut =
@@ -311,14 +376,49 @@ void manejarPots() {
 
 
   // ========================================================
-  // APLICAMOS EL TRIM
+  // TRIM SOFTWARE
   // ========================================================
 
   pwmOut = pwmOut + throttleTrim;
 
-  pwmOut = constrain(pwmOut, 0, 255);
 
-  analogWrite(pwmPotsPin, pwmOut);
+  // ========================================================
+  // TRIM FÍSICO A3
+  // ========================================================
+
+  int hardwareThrottleTrim = map(
+    analogRead(potTrimThrot),
+    0,
+    1023,
+    -15,
+    15
+  );
+
+
+  pwmOut =
+    pwmOut +
+    hardwareThrottleTrim;
+
+
+  // ========================================================
+  // LIMITAMOS PWM
+  // ========================================================
+
+  pwmOut = constrain(
+    pwmOut,
+    0,
+    255
+  );
+
+
+  // ========================================================
+  // SALIDA ESC
+  // ========================================================
+
+  analogWrite(
+    pwmPotsPin,
+    pwmOut
+  );
 
 
   // ========================================================
