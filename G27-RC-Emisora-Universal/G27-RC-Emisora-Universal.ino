@@ -4,7 +4,7 @@ float steeringMinVoltage     = 0.0;
 float steeringNeutralVoltage = 2.5;
 float steeringMaxVoltage     = 5.0;
 
-int steeringAngle = 900;       // 900 / 720 / 540
+int steeringAngle = 900;       // 270 - 900
 int encoderSlots  = 60;        // 60 / 30
 
 int steeringTrim = 0;
