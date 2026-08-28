@@ -18,7 +18,7 @@ El proyecto se divide en las siguientes carpetas principales:
   Sistema de transmisión y recepción (Transmisor/Receptor) para el control del coche RC con el 
   Logitech G27 mediante módulos Ebyte.
 
-  * 🔌 **`Lectura encoder/`**  
+* 🔌 **`Lectura encoder/`**  
   Código destinado a pruebas y lectura del encoder. (para determinar si el encoder es de 30 o de
   60 ranuras)
   https://youtu.be/1LeWWttKTqw
