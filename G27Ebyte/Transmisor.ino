@@ -170,7 +170,7 @@ void handleLightAndRange() {
     if (pressStart == 0) {
       pressStart = millis();
       longPressDone = false;
-    } else if (!longPressDone && millis() - pressStart >= 2500) {
+    } else if (!longPressDone && millis() - pressStart >= 1500) {
       // Cambio de rango
       if (steeringRange == 900) steeringRange = 720;
       else if (steeringRange == 720) steeringRange = 540;
